@@ -45,7 +45,7 @@ flowchart LR
 
 ## はじめる
 
-ZIPを展開し、`SKILL.md` と `scripts/` が同じフォルダ内にあることを確認します。今後GitHubの「Download ZIP」を使う場合も、この2つが見えるフォルダが起点です。
+[最新版の配布ZIP](https://github.com/atollray/sge-hpc/releases/latest/download/sge-hpc.zip)を展開し、`SKILL.md` と `scripts/` が同じフォルダ内にあることを確認します。GitHubの「Download ZIP」を使う場合も、この2つが見えるフォルダが起点です。
 
 ```mermaid
 flowchart TD
@@ -131,9 +131,11 @@ python3 scripts/sge_hpc.py doctor
 | [ライセンス](LICENSE) | コード・スキル本文・付属文書にMITを適用 |
 | [公開前の利用確認](references/validation.md) | 実クラスタと初めて使う人による確認項目 |
 
-ローカル自動試験は `python -m unittest discover -s tests -v` で実行できます（macOS / Linuxでは `python3`）。SSH・SGEの応答を模擬した試験で、実クラスタでの接続・投入・計算と、各OSの初回導入は未検証です。READMEのMermaid図はGitHubで表示する構成です。
+ローカル自動試験16件は `python -m unittest discover -s tests -v` で実行できます（macOS / Linuxでは `python3`）。2026-10-16にWindows・Python 3.12.10・OpenSSHから実SGEクラスタへ接続し、CPU 1スロット・メモリ1 GiBの小規模ジョブで、転送・投入・状態確認・計算ノードでの実行・共有領域への保存・ログと結果の回収を確認しました。
 
-個人設定、秘密鍵、実データはスキルフォルダに置かないでください。`.gitignore` は誤登録を減らす補助で、機密情報の検出を保証しません。現在は公開準備中です。
+新規利用者によるSSH初回導入、macOS / Linuxでの実機動作、Workの登録UIは未検証です。[検証記録と残る確認事項](references/validation.md)を参照してください。READMEのMermaid図はGitHubで表示する構成です。
+
+個人設定、秘密鍵、実データはスキルフォルダに置かないでください。`.gitignore` は誤登録を減らす補助で、機密情報の検出を保証しません。
 
 ## ライセンス
 
