@@ -1,0 +1,8 @@
+{
+  "target": "",
+  "identity_file": "",
+  "shared_root": "",
+  "sge_bin_dirs": [],
+  "exclude": [],
+  "max_upload_mb": 100
+}

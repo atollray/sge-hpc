@@ -1,0 +1,25 @@
+# Local configuration and credentials (keep user configuration outside this repo)
+hpc-config*.json
+config.local.json
+*.local.json
+.local/
+.ssh/
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Generated files and local runtime
+__pycache__/
+*.py[cod]
+.venv/
+data/
+logs/
+results/
+hpc-output/
+*.zip
+*.tar.gz
+.DS_Store
+Thumbs.db

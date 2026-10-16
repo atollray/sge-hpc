@@ -1,0 +1,27 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -cwd
+#$ -N analysis
+#$ -pe smp 4
+#$ -l mem_req=4G
+#$ -o logs/
+#$ -e logs/
+
+# Confirm the parallel environment and memory resource with your facility.
+# If memory is per slot, 4 slots x 4G = 16G total.
+# Add a queue directive only if required by your facility.
+# Create logs/ BEFORE qsub (the helper does this).
+# For array jobs, add e.g. #$ -t 1-10 and #$ -tc 2 on separate lines.
+
+set -euo pipefail
+mkdir -p results
+export OMP_NUM_THREADS="${NSLOTS:-1}"
+
+# Activate your own shared software environment here, if needed.
+# Keep the working directory, inputs and environment on shared storage.
+# Use the SGE-provided $TMPDIR for temporary intermediates if available,
+# then copy final outputs back to results/ before exiting.
+
+# CONFIGURE_BEFORE_SUBMIT
+echo "Configure resources, environment and analysis command before submission." >&2
+exit 2
