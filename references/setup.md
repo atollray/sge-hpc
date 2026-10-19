@@ -173,7 +173,9 @@ ssh -o BatchMode=yes -o ConnectTimeout=15 lab-hpc "hostname; id -un"
   "shared_root": "/shared/research-user/hpc-jobs",
   "sge_bin_dirs": [],
   "exclude": [],
-  "max_upload_mb": 100
+  "max_upload_mb": 100,
+  "job_template": "",
+  "site_notes": ""
 }
 ```
 
@@ -185,6 +187,10 @@ ssh -o BatchMode=yes -o ConnectTimeout=15 lab-hpc "hostname; id -un"
 | `sge_bin_dirs` | 非対話SSHでSGEが見つからない場合の、リモートbinディレクトリの配列。通常PATHで使えるなら空配列 |
 | `exclude` | コード転送から追加で除外する名前／相対パスのglobパターン |
 | `max_upload_mb` | 1回のコード転送で許す、非圧縮ファイル合計の上限（MiB）。既定100 |
+| `job_template` | 任意。施設に合わせた自分用のジョブ雛形（PC側のパス）。`new-job` が `assets/job.sge` の代わりに使う |
+| `site_notes` | 任意。施設の注意・規約を書いたMarkdown等（PC側のパス）。AIがジョブを書く前に読む |
+
+`job_template` と `site_notes` は、キュー名・ソフトウェア環境の場所・共有領域の注意など施設固有の情報を、スキルの外に置くための項目です。どちらもスキルフォルダの外に置きます。
 
 JSONはUTF-8で保存し、コメントや末尾の余分なカンマを入れません。Windowsのパスは `C:/Users/自分の名前/...` のように `/` で書けます。ポート・踏み台等はSSH設定へ、秘密鍵・パスワードの内容はどちらにも書きません。
 

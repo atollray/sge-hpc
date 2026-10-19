@@ -257,6 +257,37 @@ class HelperTests(unittest.TestCase):
                 self.run_cli(*self.transfer_args('submit'), '--job', 'job.sge', '--approved')
             remote.assert_not_called()
 
+    def test_new_job_copies_bundled_template_without_config_or_ssh(self):
+        folder = self.root / 'analysis'
+        folder.mkdir()
+        with patch.object(hpc.Remote, 'run') as remote, \
+                contextlib.redirect_stdout(io.StringIO()):
+            hpc.main(['new-job', '--local', str(folder)])
+            with self.assertRaisesRegex(ValueError, 'not overwriting'):
+                hpc.main(['new-job', '--local', str(folder)])
+        remote.assert_not_called()
+        self.assertIn(b'CONFIGURE_BEFORE_SUBMIT', (folder / 'job.sge').read_bytes())
+
+    def test_new_job_uses_configured_template_with_lf_and_notes(self):
+        template = self.root / 'site job.sge'
+        template.write_bytes(b'#!/bin/bash\r\n#$ -q site.q\r\n')
+        notes = self.root / 'site.md'
+        notes.write_text('notes')
+        self.cfg.update(job_template=str(template), site_notes=str(notes))
+        self.config.write_text(json.dumps(self.cfg))
+        output = self.run_cli('new-job', '--local', str(self.local), '--name', 'jobs/run.sge')
+        self.assertEqual((self.local / 'jobs' / 'run.sge').read_bytes(), b'#!/bin/bash\n#$ -q site.q\n')
+        self.assertIn('Site notes (read before writing jobs): ' + str(notes.resolve()), output)
+
+    def test_configured_files_must_exist_and_preflight_names_them(self):
+        self.cfg.update(site_notes=str(self.root / 'missing.md'))
+        self.config.write_text(json.dumps(self.cfg))
+        with self.assertRaisesRegex(ValueError, 'Site notes file not found'):
+            self.run_cli('preflight')
+        (self.root / 'missing.md').write_text('notes')
+        with patch.object(hpc.Remote, 'run', return_value='OK: qsub\n'):
+            self.assertIn('Site notes', self.run_cli('preflight'))
+
     def test_remote_paths_cannot_escape_configured_root(self):
         r = hpc.Remote(self.cfg)
         for value in ('/shared/user/jobs', '/shared/user/jobs-other/run', '/shared/user/jobs/../other'):

@@ -59,11 +59,13 @@ def load_config(path):
         require(isinstance(cfg[key], list) and all(isinstance(s, str) for s in cfg[key]),
                 key + ' must be an array of strings')
     cfg['sge_bin_dirs'] = [absolute_path(p) for p in cfg['sge_bin_dirs']]
-    identity = cfg.get('identity_file', '')
-    require(isinstance(identity, str), 'identity_file must be a string')
-    if identity:
-        cfg['identity_file'] = str(Path(identity).expanduser().resolve())
-        require(Path(cfg['identity_file']).is_file(), 'SSH identity file not found')
+    for key, label in (('identity_file', 'SSH identity'), ('job_template', 'Job template'),
+                       ('site_notes', 'Site notes')):
+        value = cfg.setdefault(key, '')
+        require(isinstance(value, str), key + ' must be a string')
+        if value:
+            cfg[key] = str(Path(value).expanduser().resolve())
+            require(Path(cfg[key]).is_file(), label + ' file not found: ' + cfg[key])
     limit = cfg.setdefault('max_upload_mb', 100)
     require(isinstance(limit, (int, float)) and 0 < limit < float('inf'),
             'max_upload_mb must be a positive finite number')
@@ -172,6 +174,26 @@ def safe_extract(archive, local):
         tf.extractall(local, members=members, filter='data')
 
 
+def print_site_notes(cfg):
+    if cfg.get('site_notes'):
+        print('Site notes (read before writing jobs): ' + cfg['site_notes'])
+
+
+def new_job(cfg, local, name):
+    source = Path(cfg.get('job_template') or Path(__file__).resolve().parents[1] / 'assets' / 'job.sge')
+    folder = Path(local).expanduser().resolve()
+    require(folder.is_dir(), 'Local directory not found: ' + str(folder))
+    target = folder / relative_path(name)
+    require(not target.exists(), 'Job file already exists; not overwriting: ' + str(target))
+    # Job scripts must reach SGE with LF line endings.
+    text = source.read_text(encoding='utf-8-sig').replace('\r\n', '\n')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(text.encode('utf-8'))
+    print(f'Created {target} from {source}')
+    print_site_notes(cfg)
+    print('Edit resources, environment and command; then submit --dry-run.')
+
+
 def job_id(value):
     require(bool(re.fullmatch(r'[1-9][0-9]*', value)), 'Expected a positive numeric job ID')
     return value
@@ -231,6 +253,9 @@ def parser():
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('doctor', help='Check local tools without configuration, network access or writes')
     sub.add_parser('preflight', help='Check SSH, SGE commands and shared root')
+    q = sub.add_parser('new-job', help='Copy the job template (job_template or assets/job.sge)')
+    q.add_argument('--local', required=True, help='Analysis folder to receive the job file')
+    q.add_argument('--name', default='job.sge', help='Job file name (default job.sge)')
     for action in ('sync', 'submit'):
         q = sub.add_parser(action)
         q.add_argument('--local', required=True)
@@ -272,6 +297,9 @@ def main(argv=None):
         require(shutil.which('ssh'), 'OpenSSH client not found; see references/setup.md')
         print('Local check complete. No network connection, key inspection or configuration changes.')
         return
+    if args.action == 'new-job':
+        new_job(load_config(args.config) if args.config else {}, args.local, args.name)
+        return
     if not args.config:
         cli.error('--config is required for ' + args.action + '; use doctor for a local-only check')
     cfg = load_config(args.config)
@@ -289,6 +317,9 @@ def main(argv=None):
             'printf "Shared root (verify across compute nodes): "; pwd -P'
         )
         print(remote.run(command), end='')
+        if cfg['job_template']:
+            print('Job template: ' + cfg['job_template'])
+        print_site_notes(cfg)
         return
     if args.action == 'status':
         job = job_id(args.job_id)
