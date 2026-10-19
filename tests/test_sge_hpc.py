@@ -115,6 +115,33 @@ class HelperTests(unittest.TestCase):
         remote.assert_called_once_with('qstat -u "$(id -un)"')
         self.assertEqual(output.count('123'), 2)
 
+    QACCT = ('==============================================================\n'
+             'qname        all.q\nhostname     node1\nowner        user\njobname      array\n'
+             'jobnumber    123\ntaskid       1\ncpu          1.000\nexit_status  0\n'
+             'maxvmem      1.000G\n'
+             '==============================================================\n'
+             'jobname      array\njobnumber    123\ntaskid       2\nexit_status  1\n')
+
+    def fake_finished(self, qacct):
+        return lambda command, **kw: qacct if command.startswith('qacct') else ''
+
+    def test_status_shows_accounting_summary_per_record(self):
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished(self.QACCT)) as remote:
+            output = self.run_cli('status', '123')
+        self.assertIn('qacct -j 123 || true', remote.call_args.args[0])
+        self.assertIn('Completion/success unconfirmed', output)
+        self.assertIn('maxvmem      1.000G', output)
+        self.assertEqual(output.count('taskid'), 2)
+        self.assertEqual(sum(s.startswith('=') for s in output.splitlines()), 2)
+        self.assertNotIn('qname', output)
+        self.assertNotIn('cpu', output)
+
+    def test_status_full_and_missing_accounting(self):
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished(self.QACCT)):
+            self.assertIn('cpu          1.000', self.run_cli('status', '123', '--full'))
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished('')):
+            self.assertIn('No accounting record yet', self.run_cli('status', '123'))
+
     def test_queue_failure_does_not_claim_completion(self):
         with patch.object(hpc.Remote, 'run', side_effect=RuntimeError('SSH failed')):
             with self.assertRaises(RuntimeError):

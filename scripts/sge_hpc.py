@@ -19,6 +19,10 @@ DEFAULT_EXCLUDES = (
     'id_ed25519*', '__pycache__', '.venv', 'data', 'logs', 'results',
     'hpc-config.json',
 )
+QACCT_FIELDS = (
+    'jobname', 'jobnumber', 'taskid', 'owner', 'hostname', 'qsub_time', 'start_time',
+    'end_time', 'failed', 'exit_status', 'ru_wallclock', 'maxvmem', 'slots',
+)
 
 
 def require(condition, message):
@@ -155,6 +159,37 @@ def safe_extract(archive, local):
         tf.extractall(local, members=members, filter='data')
 
 
+def job_id(value):
+    require(bool(re.fullmatch(r'[1-9][0-9]*', value)), 'Expected a positive numeric job ID')
+    return value
+
+
+def queue_lines(remote, job):
+    # Query the authenticated remote user, not the SSH alias string.
+    queue = remote.run('qstat -u "$(id -un)"')
+    return [s for s in queue.splitlines() if s.split() and s.split()[0] == job]
+
+
+def in_error(lines):
+    return any(len(s.split()) >= 5 and re.search('[Ee]', s.split()[4]) for s in lines)
+
+
+def qacct_summary(text):
+    # Keep record separators so array tasks and reused job IDs stay distinguishable.
+    kept = [s.rstrip() for s in text.splitlines()
+            if s.startswith('=') or (s.split() and s.split()[0] in QACCT_FIELDS)]
+    return '\n'.join(kept) + '\n' if any(not s.startswith('=') for s in kept) else text
+
+
+def print_accounting(remote, job, full):
+    print('Not in queue. Completion/success unconfirmed; match accounting and logs to this run.')
+    text = remote.run(f'qacct -j {job} || true')
+    if not text.strip():
+        print('No accounting record yet; check again later and confirm with this run\'s logs.')
+        return
+    print(text if full else qacct_summary(text), end='')
+
+
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', help='Path to your private configuration JSON (not needed for doctor)')
@@ -172,6 +207,7 @@ def parser():
             q.add_argument('--approved', action='store_true', help='Submission plan was authorized')
     q = sub.add_parser('status')
     q.add_argument('job_id')
+    q.add_argument('--full', action='store_true', help='Show the complete qacct record')
     q = sub.add_parser('collect')
     q.add_argument('--remote', required=True)
     q.add_argument('--local', required=True)
@@ -212,17 +248,14 @@ def main(argv=None):
         print(remote.run(command), end='')
         return
     if args.action == 'status':
-        require(bool(re.fullmatch(r'[1-9][0-9]*', args.job_id)), 'Expected a positive numeric job ID')
-        # Query the authenticated remote user, not the SSH alias string.
-        queue = remote.run('qstat -u "$(id -un)"')
-        lines = [s for s in queue.splitlines() if s.split() and s.split()[0] == args.job_id]
+        job = job_id(args.job_id)
+        lines = queue_lines(remote, job)
         if lines:
             print('\n'.join(lines))
-            if any(len(s.split()) >= 5 and re.search('[Ee]', s.split()[4]) for s in lines):
-                print(remote.run('qstat -j ' + args.job_id), end='')
+            if in_error(lines):
+                print(remote.run('qstat -j ' + job), end='')
         else:
-            print('Not in queue. Completion/success unconfirmed; match accounting and logs to this run.')
-            print(remote.run('qacct -j ' + args.job_id), end='')
+            print_accounting(remote, job, args.full)
         return
     dest = remote.directory(args.remote)
     local = Path(args.local).expanduser().resolve()
