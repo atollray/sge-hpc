@@ -39,7 +39,21 @@ def relative_path(value):
     return str(p)
 
 
+def msys_drive_path(value):
+    # With MSYS_NO_PATHCONV=1, Git Bash passes /c/Users/... unchanged to Windows Python.
+    match = re.fullmatch(r'/([A-Za-z])(/.*)?', value)
+    return match.group(1).upper() + ':' + (match.group(2) or '/') if match else value
+
+
+def local_path(value):
+    return Path(msys_drive_path(value) if os.name == 'nt' else value).expanduser().resolve()
+
+
 def absolute_path(value):
+    # Git Bash rewrites arguments such as /home/user into C:/Program Files/Git/home/user.
+    require(not (isinstance(value, str) and re.match(r'[A-Za-z]:[\\/]', value)),
+            'Expected a remote POSIX path, got a Windows path: ' + str(value)
+            + '. In Git Bash, set MSYS_NO_PATHCONV=1 for this command or use PowerShell.')
     require(isinstance(value, str) and value.startswith('/')
             and value != '/' and '..' not in PurePosixPath(value).parts
             and not any(c in value for c in '\n\r\x00'),
@@ -48,7 +62,7 @@ def absolute_path(value):
 
 
 def load_config(path):
-    cfg = json.loads(Path(path).expanduser().read_text(encoding='utf-8-sig'))
+    cfg = json.loads(local_path(path).read_text(encoding='utf-8-sig'))
     require(isinstance(cfg, dict), 'Configuration must be a JSON object')
     target = cfg.get('target', '')
     require(isinstance(target, str) and bool(re.fullmatch(r'[\w.@:\[\]-]+', target))
@@ -64,7 +78,7 @@ def load_config(path):
         value = cfg.setdefault(key, '')
         require(isinstance(value, str), key + ' must be a string')
         if value:
-            cfg[key] = str(Path(value).expanduser().resolve())
+            cfg[key] = str(local_path(value))
             require(Path(cfg[key]).is_file(), label + ' file not found: ' + cfg[key])
     limit = cfg.setdefault('max_upload_mb', 100)
     require(isinstance(limit, (int, float)) and 0 < limit < float('inf'),
@@ -181,7 +195,7 @@ def print_site_notes(cfg):
 
 def new_job(cfg, local, name):
     source = Path(cfg.get('job_template') or Path(__file__).resolve().parents[1] / 'assets' / 'job.sge')
-    folder = Path(local).expanduser().resolve()
+    folder = local_path(local)
     require(folder.is_dir(), 'Local directory not found: ' + str(folder))
     target = folder / relative_path(name)
     require(not target.exists(), 'Job file already exists; not overwriting: ' + str(target))
@@ -335,7 +349,7 @@ def main(argv=None):
         watch(remote, job_id(args.job_id), args.interval, args.timeout, args.full)
         return
     dest = remote.directory(args.remote)
-    local = Path(args.local).expanduser().resolve()
+    local = local_path(args.local)
     print(f'{args.action}: {local} <-> {cfg["target"]}:{dest}')
     if args.action in ('sync', 'submit'):
         files, total = upload_files(local, DEFAULT_EXCLUDES + tuple(cfg['exclude'])

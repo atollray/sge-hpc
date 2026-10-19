@@ -288,6 +288,20 @@ class HelperTests(unittest.TestCase):
         with patch.object(hpc.Remote, 'run', return_value='OK: qsub\n'):
             self.assertIn('Site notes', self.run_cli('preflight'))
 
+    def test_git_bash_converted_remote_path_explains_fix(self):
+        args = ['submit', '--local', str(self.local), '--remote',
+                'C:/Program Files/Git/shared/user/jobs/run', '--job', 'job.sge', '--dry-run']
+        with patch.object(hpc.Remote, 'run') as remote, \
+                self.assertRaisesRegex(ValueError, 'MSYS_NO_PATHCONV=1'):
+            self.run_cli(*args)
+        remote.assert_not_called()
+
+    def test_msys_style_local_paths_map_to_windows_drives(self):
+        for value, expected in (('/c/Users/me/run', 'C:/Users/me/run'), ('/d', 'D:/'),
+                                ('/home/me', '/home/me'), ('C:/Users/me', 'C:/Users/me')):
+            with self.subTest(value=value):
+                self.assertEqual(hpc.msys_drive_path(value), expected)
+
     def test_remote_paths_cannot_escape_configured_root(self):
         r = hpc.Remote(self.cfg)
         for value in ('/shared/user/jobs', '/shared/user/jobs-other/run', '/shared/user/jobs/../other'):

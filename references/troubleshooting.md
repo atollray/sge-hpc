@@ -41,6 +41,7 @@ AIの実行環境で `doctor` を行い、次をPCの端末と比べます。
 | `MISSING: qsub` 等 | 本当にSGE投入先へ接続しているか確認。通常のSSHログインと非対話SSHでPATHが異なることがある。必要なら `sge_bin_dirs` を設定 |
 | `qsub` は見つかるが `SGE_ROOT` 等の設定が不足 | binへのPATH追加だけでは不十分。施設指定の非対話シェルのSGE環境を整える |
 | `Shared root ...` のエラー | リモートの共有ディレクトリが存在し、本人に書込・移動権限があるか確認。PC側のパスではない |
+| `got a Windows path: C:/Program Files/Git/...` | Git Bashがリモートパスを書き換えている。`MSYS_NO_PATHCONV=1` を付けて実行するか、PowerShellを使う |
 | `--remote must be below shared_root` | 実行先を共有作業領域の下の新しい実行フォルダへ指定。共有領域そのものは指定しない |
 | `Path escapes shared_root` | 実行先のシンボリックリンクが別領域を指していないか確認 |
 | `Configure the job template first` | 雛形の末尾を実処理へ置換し、`CONFIGURE_BEFORE_SUBMIT` マーカーを削除 |

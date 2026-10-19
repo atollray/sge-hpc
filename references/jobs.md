@@ -50,6 +50,8 @@ hpc_remote='/shared/research-user/hpc-jobs/check-001'
 python3 scripts/sge_hpc.py --config "$hpc_config" submit --local "$hpc_local" --remote "$hpc_remote" --job job.sge --dry-run
 ```
 
+WindowsのGit Bashから実行すると、`/` で始まるリモートパスがWindowsのパスに書き換えられます。Git Bashではコマンドの前に `MSYS_NO_PATHCONV=1` を付けるか、PowerShellを使ってください。
+
 dry-runでは、SSH接続・転送・ジョブ投入を行わず、ローカルで対象とジョブ内容を表示します。接続先、入力ファイル、コマンド、資源指定、出力先を確認します。**共有された端末ログやチャットにも計画内容が出る**ため、ジョブに秘密情報を直接書かないでください。
 
 ## 許可を得て投入する
