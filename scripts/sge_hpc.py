@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 
 
 DEFAULT_EXCLUDES = (
@@ -190,6 +191,28 @@ def print_accounting(remote, job, full):
     print(text if full else qacct_summary(text), end='')
 
 
+def watch(remote, job, interval, timeout, full):
+    require(interval > 0 and timeout >= 0, 'Use --interval > 0 and --timeout >= 0')
+    start = time.monotonic()
+    print(f'Watching job {job} every {interval:g}s; timeout {timeout:g}s (0 = none)')
+    while True:
+        lines = queue_lines(remote, job)
+        if not lines:
+            print_accounting(remote, job, full)
+            return
+        if in_error(lines):
+            print('\n'.join(lines))
+            detail = remote.run('qstat -j ' + job)
+            reasons = [s for s in detail.splitlines() if 'error reason' in s.lower()]
+            print('\n'.join(reasons) if reasons else detail.rstrip())
+            raise RuntimeError(f'Job {job} is in an error state; fix the cause before any resubmission')
+        left = timeout - (time.monotonic() - start) if timeout else interval
+        if left <= 0:
+            print('\n'.join(lines))
+            raise RuntimeError(f'Timeout: job {job} is still queued or running; check later with status')
+        time.sleep(min(interval, left))
+
+
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', help='Path to your private configuration JSON (not needed for doctor)')
@@ -207,6 +230,12 @@ def parser():
             q.add_argument('--approved', action='store_true', help='Submission plan was authorized')
     q = sub.add_parser('status')
     q.add_argument('job_id')
+    q.add_argument('--full', action='store_true', help='Show the complete qacct record')
+    q = sub.add_parser('watch', help='Wait until a job leaves the queue or enters an error state')
+    q.add_argument('job_id')
+    q.add_argument('--interval', type=float, default=30, help='Seconds between checks (default 30)')
+    q.add_argument('--timeout', type=float, default=600,
+                   help='Give up after this many seconds (default 600; 0 = no limit)')
     q.add_argument('--full', action='store_true', help='Show the complete qacct record')
     q = sub.add_parser('collect')
     q.add_argument('--remote', required=True)
@@ -256,6 +285,9 @@ def main(argv=None):
                 print(remote.run('qstat -j ' + job), end='')
         else:
             print_accounting(remote, job, args.full)
+        return
+    if args.action == 'watch':
+        watch(remote, job_id(args.job_id), args.interval, args.timeout, args.full)
         return
     dest = remote.directory(args.remote)
     local = Path(args.local).expanduser().resolve()

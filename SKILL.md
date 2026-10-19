@@ -24,7 +24,7 @@ description: ローカルのChatGPT Work / CodexからSGE（Grid Engine）HPCを
 2. 解析の依頼では [references/jobs.md](references/jobs.md) を読み、入力・コマンド・環境・スロット数・メモリ・出力を決め、`assets/job.sge` を解析用ディレクトリへコピーして編集する。初回の一連の確認が必要なら同資料の小規模ジョブを提案する。接続だけの依頼をジョブ投入へ拡張しない。資源名と単位は施設の設定で確認し、ジョブファイルはLFで保存する。
 3. `submit --dry-run` で転送対象とジョブ内容を表示し、投入計画を利用者に示す。計画の範囲で投入の許可を得てから実行する。会話中ですでに具体的な計画と投入が承認されていれば、同じ承認を繰り返し求めない。
 4. 実投入時は `--dry-run` を外し、`--approved` を付ける。このフラグは会話での許可を記録するための明示指定であり、許可そのものを代替しない。成功時の `JOBID` とリモート作業場所を記録する。
-5. `status <JOBID>` で状態を見る。キューから消えたジョブは `qacct` の主要項目（終了状態・実行時間・メモリ等）を表示し、全項目は `--full` で見る。長時間の監視は間隔を置いた状態確認を使う。キューから消えただけでは成功と判断せず、当該実行のログと出力を確認する。
+5. `status <JOBID>` で状態を見る。キューから消えたジョブは `qacct` の主要項目（終了状態・実行時間・メモリ等）を表示し、全項目は `--full` で見る。短いジョブは `watch <JOBID>` で終了かエラー状態まで待てる。`--timeout` は実行ツールの時間制限より短くし、長時間のジョブは間隔を置いた `status` で確認する。キューから消えただけでは成功と判断せず、当該実行のログと出力を確認する。
 6. `collect` でログ・要約・最終成果を回収する。生データや巨大な中間物は必要がなければサーバーに残す。終了状態、実行時間、メモリ、出力場所と未確認事項を報告する。
 
 ```text
@@ -34,6 +34,7 @@ python scripts/sge_hpc.py --config <設定JSON> sync --local <コードのフォ
 python scripts/sge_hpc.py --config <設定JSON> submit --local <コードのフォルダ> --remote <共有領域内の絶対パス> --job job.sge --dry-run
 python scripts/sge_hpc.py --config <設定JSON> submit --local <コードのフォルダ> --remote <共有領域内の絶対パス> --job job.sge --approved
 python scripts/sge_hpc.py --config <設定JSON> status <JOBID>
+python scripts/sge_hpc.py --config <設定JSON> watch <JOBID> --interval 30 --timeout 600
 python scripts/sge_hpc.py --config <設定JSON> collect --remote <共有領域内の絶対パス> --local <回収先> --paths logs results
 ```
 

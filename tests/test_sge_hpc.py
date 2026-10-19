@@ -142,6 +142,48 @@ class HelperTests(unittest.TestCase):
         with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished('')):
             self.assertIn('No accounting record yet', self.run_cli('status', '123'))
 
+    def fake_queue(self, states, qstat_j=''):
+        states = iter(states)
+
+        def fake(command, **kw):
+            if command.startswith('qstat -u'):
+                state = next(states)
+                return f'123 0.5 job user {state} date queue 1\n' if state else ''
+            if command.startswith('qstat -j'):
+                return qstat_j
+            return self.QACCT
+        return fake
+
+    def test_watch_waits_until_job_leaves_queue(self):
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_queue(['qw', 'r', None])), \
+                patch.object(hpc.time, 'sleep') as sleep:
+            output = self.run_cli('watch', '123', '--interval', '5')
+        self.assertEqual(sleep.call_count, 2)
+        sleep.assert_called_with(5)
+        self.assertIn('Completion/success unconfirmed', output)
+        self.assertIn('exit_status  0', output)
+
+    def test_watch_stops_with_error_reason(self):
+        detail = 'job_number: 123\nerror reason    1:   can\'t chdir to directory\n'
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_queue(['Eqw'], detail)), \
+                patch.object(hpc.time, 'sleep') as sleep, \
+                contextlib.redirect_stdout(io.StringIO()) as output, \
+                self.assertRaisesRegex(RuntimeError, 'error state'):
+            hpc.main(['--config', str(self.config), 'watch', '123'])
+        sleep.assert_not_called()
+        self.assertIn("can't chdir", output.getvalue())
+        self.assertNotIn('job_number', output.getvalue())
+
+    def test_watch_timeout_reports_still_running(self):
+        clock = iter([0, 4, 10])
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_queue(['r', 'r'])), \
+                patch.object(hpc.time, 'monotonic', side_effect=lambda: next(clock)), \
+                patch.object(hpc.time, 'sleep') as sleep, \
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(RuntimeError, 'still queued or running'):
+            hpc.main(['--config', str(self.config), 'watch', '123', '--timeout', '10'])
+        sleep.assert_called_once_with(6)
+
     def test_queue_failure_does_not_claim_completion(self):
         with patch.object(hpc.Remote, 'run', side_effect=RuntimeError('SSH failed')):
             with self.assertRaises(RuntimeError):
