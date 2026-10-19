@@ -31,7 +31,7 @@ flowchart LR
 ## できることと必要な環境
 
 - SSH接続確認、コード・小さな入力の転送
-- SGEジョブの投入計画、投入、状況確認
+- SGEジョブの投入計画、投入、状況確認、完了待ち
 - ログと最終結果の回収
 - SSH未設定の人への対話による導入案内
 
@@ -114,6 +114,8 @@ python3 scripts/sge_hpc.py doctor
 
 > ジョブ番号12345の状態を確認して。
 
+> ジョブ番号12345が終わるまで5分ほど待って。
+
 > 今回の実行のログと最終結果をPCへ回収して、成功したか確認して。
 
 投入前に計画を確認し、許可を得てから実行します。実行ごとに作業ディレクトリを分け、生データや大きな中間物はクラスタに残します。AIを使わず操作する手順も[ジョブ実行ガイド](references/jobs.md)にあります。
@@ -123,7 +125,7 @@ python3 scripts/sge_hpc.py doctor
 | 資料 | 内容 |
 |---|---|
 | [SKILL.md](SKILL.md) | AIが読む手順と操作範囲 |
-| [初回設定](references/setup.md) | Jupyter利用者向けの確認、OS別準備、SSH認証、設定JSON |
+| [初回設定](references/setup.md) | Jupyter利用者向けの確認、OS別準備、SSH認証、設定JSON（施設用の雛形・注意の指定を含む） |
 | [ジョブ実行](references/jobs.md) | 小規模の確認ジョブから転送・投入・回収まで |
 | [トラブル対処](references/troubleshooting.md) | SSH・SGE・転送のエラーと相談先 |
 | [ライセンス](LICENSE) | コード・スキル本文・付属文書にMITを適用 |
