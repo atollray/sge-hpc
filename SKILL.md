@@ -35,7 +35,7 @@ python scripts/sge_hpc.py --config <設定JSON> sync --local <コードのフォ
 python scripts/sge_hpc.py --config <設定JSON> submit --local <コードのフォルダ> --remote <共有領域内の絶対パス> --job job.sge --dry-run
 python scripts/sge_hpc.py --config <設定JSON> submit --local <コードのフォルダ> --remote <共有領域内の絶対パス> --job job.sge --approved
 python scripts/sge_hpc.py --config <設定JSON> status <JOBID>
-python scripts/sge_hpc.py --config <設定JSON> watch <JOBID> --interval 30 --timeout 600
+python scripts/sge_hpc.py --config <設定JSON> watch <JOBID> --interval 30 --timeout 300
 python scripts/sge_hpc.py --config <設定JSON> collect --remote <共有領域内の絶対パス> --local <回収先> --paths logs results
 ```
 

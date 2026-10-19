@@ -92,10 +92,18 @@ python3 scripts/sge_hpc.py --config "$hpc_config" collect --remote "$hpc_remote"
 python3 scripts/sge_hpc.py --config "$hpc_config" collect --remote "$hpc_remote" --local "$HOME/hpc-output/check-001" --paths logs results
 ```
 
-短いジョブは `watch` で終わるまで待てます。30秒ごとに確認し、キューから消えたら `status` と同じ記録を表示します。エラー状態（`Eqw` 等）になったら理由を表示して止まり、既定の600秒を過ぎたら「まだ実行中」と表示して止まります。どちらの場合もジョブは取り消しません。`--interval` と `--timeout` で秒数を変えられ、`--timeout 0` は無制限です。AIの実行ツールには1回の実行時間の上限があるため、それより短くします。
+短いジョブは `watch` で終わるまで待てます。30秒ごとに確認し、キューから消えたら `status` と同じ記録を表示します。エラー状態（`Eqw` 等）になったら理由を表示して止まり、既定の300秒を過ぎたら「まだ実行中」と表示して止まります。どちらの場合もジョブは取り消しません。`--interval` と `--timeout` で秒数を変えられ、`--timeout 0` は無制限です。AIの実行ツールには1回の実行時間の上限があるため、それより短くします。
+
+Windows：
 
 ```powershell
 python scripts/sge_hpc.py --config "$hpcConfig" watch 12345 --timeout 300
+```
+
+macOS / Linux：
+
+```bash
+python3 scripts/sge_hpc.py --config "$hpc_config" watch 12345 --timeout 300
 ```
 
 ジョブがキューから消えた後、`status` は `qacct` の主要項目（所有者・時刻・終了状態・実行時間・最大メモリ等）を表示します。全項目は `status 12345 --full` で見られます。今回の `qacct` 記録と `logs/` を照合します。反映が遅れる場合や、同じ番号の過去記録が出る場合があるため、所有者・時刻・ジョブ名も確認します。回収した `results/check.txt` が期待どおりなら、一連の確認は完了です。

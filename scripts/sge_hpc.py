@@ -285,8 +285,8 @@ def parser():
     q = sub.add_parser('watch', help='Wait until a job leaves the queue or enters an error state')
     q.add_argument('job_id')
     q.add_argument('--interval', type=float, default=30, help='Seconds between checks (default 30)')
-    q.add_argument('--timeout', type=float, default=600,
-                   help='Give up after this many seconds (default 600; 0 = no limit)')
+    q.add_argument('--timeout', type=float, default=300,
+                   help='Give up after this many seconds (default 300; 0 = no limit)')
     q.add_argument('--full', action='store_true', help='Show the complete qacct record')
     q = sub.add_parser('collect')
     q.add_argument('--remote', required=True)
