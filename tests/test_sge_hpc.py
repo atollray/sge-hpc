@@ -208,6 +208,35 @@ class HelperTests(unittest.TestCase):
             self.run_cli('collect', '--remote', '/shared/user/jobs/run', '--local', str(out))
         self.assertEqual((out / 'results' / 'output.txt').read_text(), 'ok')
 
+    def test_collect_allow_missing_changes_only_the_remote_command(self):
+        def fake(command, **kw):
+            commands.append(command)
+            with tarfile.open(fileobj=kw['stdout'], mode='w:gz') as tf:
+                info = tarfile.TarInfo('logs/job.o1')
+                tf.addfile(info, io.BytesIO(b''))
+            return ''
+        for flag, expected in (([], "tar -czf - -- logs results"), (['--allow-missing'], 'Skipped')):
+            commands = []
+            with self.subTest(flag=flag), patch.object(hpc.Remote, 'run', side_effect=fake):
+                self.run_cli('collect', '--remote', '/shared/user/jobs/run',
+                             '--local', str(self.root / 'out'), *flag)
+                self.assertIn(expected, commands[0])
+
+    @unittest.skipUnless(hpc.shutil.which('sh') and hpc.shutil.which('tar'), 'needs sh and tar')
+    def test_allow_missing_shell_skips_absent_paths(self):
+        work = self.root / 'remote run'
+        (work / 'logs').mkdir(parents=True)
+        (work / 'logs' / 'job.o1').write_text('log')
+        for paths, code in ((['logs', 'results'], 0), (['results'], 2)):
+            with self.subTest(paths=paths):
+                result = subprocess.run(['sh', '-c', hpc.archive_command(paths, True)],
+                                        cwd=work, capture_output=True)
+                self.assertEqual(result.returncode, code)
+                self.assertIn(b'results', result.stderr)
+                if code == 0:
+                    with tarfile.open(fileobj=io.BytesIO(result.stdout), mode='r:gz') as tf:
+                        self.assertEqual(tf.getnames(), ['logs', 'logs/job.o1'])
+
     def test_unsafe_archives_are_rejected_before_extraction(self):
         for name, kind in [('../escape', tarfile.REGTYPE), ('link', tarfile.SYMTYPE)]:
             with self.subTest(name=name), tempfile.TemporaryFile() as archive:

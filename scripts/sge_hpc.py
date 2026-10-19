@@ -144,6 +144,18 @@ def upload(remote, local, dest, files):
         remote.run(remote.enter(dest, create=True) + 'tar -xzf -', stdin=archive)
 
 
+def archive_command(paths, allow_missing):
+    if not allow_missing:
+        return 'tar -czf - -- ' + shlex.join(paths)
+    return (
+        '{ set --; for p in ' + shlex.join(paths) + '; do '
+        'if [ -e "$p" ]; then set -- "$@" "$p"; '
+        'else echo "Skipped missing path: $p" >&2; fi; done; '
+        '[ "$#" -gt 0 ] || { echo "None of the requested paths exist" >&2; exit 2; }; '
+        'tar -czf - -- "$@"; }'
+    )
+
+
 def safe_extract(archive, local):
     with tarfile.open(fileobj=archive, mode='r:gz') as tf:
         members = tf.getmembers()
@@ -241,6 +253,8 @@ def parser():
     q.add_argument('--remote', required=True)
     q.add_argument('--local', required=True)
     q.add_argument('--paths', nargs='+', default=['logs', 'results'])
+    q.add_argument('--allow-missing', action='store_true',
+                   help='Skip remote paths that do not exist instead of failing')
     q.add_argument('--dry-run', action='store_true')
     return p
 
@@ -320,12 +334,12 @@ def main(argv=None):
             print('JOBID=' + match.group(1))
     elif args.action == 'collect':
         paths = [relative_path(v) for v in args.paths]
-        print('Collect: ' + ', '.join(paths))
+        print('Collect: ' + ', '.join(paths) + (' (missing paths skipped)' if args.allow_missing else ''))
         if args.dry_run:
             print('Dry run: no connection or local writes.')
             return
         with tempfile.TemporaryFile() as archive:
-            remote.run(remote.enter(dest) + 'tar -czf - -- ' + shlex.join(paths), stdout=archive)
+            remote.run(remote.enter(dest) + archive_command(paths, args.allow_missing), stdout=archive)
             archive.seek(0)
             safe_extract(archive, local)
         print('Collection complete.')
