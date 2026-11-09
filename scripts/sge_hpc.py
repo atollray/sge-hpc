@@ -188,6 +188,36 @@ def safe_extract(archive, local):
         tf.extractall(local, members=members, filter='data')
 
 
+def output_dirs(content):
+    """Folders SGE needs before start: the -o/-e targets of '#$' lines, plus logs/."""
+    tokens = []
+    for line in content.splitlines():
+        if line.startswith('#$'):
+            try:
+                tokens += shlex.split(line[2:], comments=True)
+            except ValueError:
+                tokens += line[2:].split()
+    folders, notes = ['logs'], []
+    # Relative -o/-e paths start from the run folder only with -cwd (not -wd elsewhere).
+    cwd = '-cwd' in tokens and '-wd' not in tokens
+    for flag, value in zip(tokens, tokens[1:]):
+        if flag not in ('-o', '-e'):
+            continue
+        path = value.split(':', 1)[1] if ':' in value else value  # [host:]path
+        if '$' in path or path.startswith('/') or not cwd:
+            notes.append(f'{flag} {value} (create it yourself if needed)')
+            continue
+        # A trailing / names a folder; otherwise the last part is the log file name.
+        folder = path.rstrip('/') if path.endswith('/') else str(PurePosixPath(path).parent)
+        if folder in ('', '.'):
+            continue
+        try:
+            folders.append(relative_path(folder))
+        except ValueError:
+            notes.append(f'{flag} {value} (outside the run folder)')
+    return list(dict.fromkeys(folders)), notes
+
+
 def print_site_notes(cfg):
     if cfg.get('site_notes'):
         print('Site notes (read before writing jobs): ' + cfg['site_notes'])
@@ -393,13 +423,18 @@ def main(argv=None):
                     'Job script must use LF line endings')
             require('CONFIGURE_BEFORE_SUBMIT' not in content, 'Configure the job template first')
             print('Job script:\n' + content)
+            folders, notes = output_dirs(content)
+            print('Created before qsub: ' + ', '.join(folders))
+            for note in notes:
+                print('Not created: ' + note)
             require(args.dry_run or args.approved, 'Show --dry-run plan and obtain approval; then use --approved')
         if args.dry_run:
             print('Dry run: no connection, upload or submission.')
             return
         upload(remote, local, dest, files)
         if args.action == 'submit':
-            out = remote.run(remote.enter(dest) + 'mkdir -p logs && qsub -terse ' + shlex.quote(job))
+            out = remote.run(remote.enter(dest) + 'mkdir -p ' + shlex.join(folders)
+                             + ' && qsub -terse ' + shlex.quote(job))
             print(out, end='')
             match = re.fullmatch(r'\s*([0-9]+)(?:\.[0-9,:-]+)?\s*', out)
             require(match, 'qsub response ambiguous; check qstat before any retry (job may already exist)')

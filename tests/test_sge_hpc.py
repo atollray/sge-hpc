@@ -108,6 +108,31 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(len(commands), 2)
         self.assertIn('mkdir -p logs && qsub -terse job.sge', commands[1])
 
+    def test_output_folders_from_job_directives(self):
+        content = ('#!/bin/bash\n#$ -cwd\n#$ -o logs5/   # per-run logs\n#$ -e logs5/\n'
+                   '#$ -o out/run.log -j y\n#$ -e $HOME/err/\n#$ -o /abs/logs/\n#$ -e ../up/\n'
+                   '#$ -o host:hostlogs/\necho "-o notadirective/"\n')
+        folders, notes = hpc.output_dirs(content)
+        self.assertEqual(folders, ['logs', 'logs5', 'out', 'hostlogs'])
+        self.assertEqual(len(notes), 3)
+        folders, notes = hpc.output_dirs('#$ -o logs7/\n')
+        self.assertEqual((folders, len(notes)), (['logs'], 1))
+
+    def test_submit_creates_output_folders_before_qsub(self):
+        (self.local / 'job.sge').write_bytes(b'#!/bin/bash\n#$ -cwd\n#$ -o logs5/\n#$ -e logs5/\necho ok\n')
+        commands = []
+
+        def fake(command, **kw):
+            commands.append(command)
+            return '42\n' if 'qsub' in command else ''
+        with patch.object(hpc.Remote, 'run') as remote:
+            plan = self.run_cli(*self.transfer_args('submit'), '--job', 'job.sge', '--dry-run')
+        remote.assert_not_called()
+        self.assertIn('Created before qsub: logs, logs5', plan)
+        with patch.object(hpc.Remote, 'run', side_effect=fake):
+            self.run_cli(*self.transfer_args('submit'), '--job', 'job.sge', '--approved')
+        self.assertIn('mkdir -p logs logs5 && qsub -terse job.sge', commands[1])
+
     def test_status_uses_remote_authenticated_user_and_keeps_all_array_rows(self):
         lines = '123 0.5 array user r date queue 1 1\n123 0.5 array user qw date queue 1 2\n'
         with patch.object(hpc.Remote, 'run', return_value=lines) as remote:
