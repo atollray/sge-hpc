@@ -127,6 +127,21 @@ class Remote:
 
 
 IGNORE_FILE = '.sgehpcignore'
+TEXT_SUFFIXES = {
+    '.tsv', '.csv', '.txt', '.fa', '.fasta', '.fna', '.faa', '.fastq', '.fq', '.sam', '.bed',
+    '.gff', '.gff3', '.gtf', '.vcf', '.json', '.yaml', '.yml', '.sh', '.py', '.r', '.pl',
+}
+
+
+def crlf_files(local, files):
+    # Cluster tools such as awk keep the \r, so lookups can silently match nothing.
+    found = []
+    for p in files:
+        if p.suffix.lower() in TEXT_SUFFIXES:
+            with p.open('rb') as f:
+                if b'\r\n' in f.read(65536):
+                    found.append(p.relative_to(local).as_posix())
+    return found
 
 
 def project_excludes(local):
@@ -429,6 +444,12 @@ def main(argv=None):
         print(f'Upload: {len(files)} files, {total / 1024 / 1024:.2f} MiB; no remote deletion')
         for f in files:
             print('  ' + f.relative_to(local).as_posix())
+        crlf = crlf_files(local, files)
+        if crlf:
+            print(f'WARNING: {len(crlf)} text file(s) use CRLF line endings; awk, cut, join etc. on '
+                  'the cluster may silently match nothing. Convert to LF if the job reads them:')
+            for name in crlf:
+                print('  ' + name)
         if args.action == 'submit':
             job = relative_path(args.job)
             job_path = local / job

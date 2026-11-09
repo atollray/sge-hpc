@@ -45,6 +45,8 @@ AIの実行環境で `doctor` を行い、次をPCの端末と比べます。
 | `--remote must be below shared_root` | 実行先を共有作業領域の下の新しい実行フォルダへ指定。共有領域そのものは指定しない |
 | `Path escapes shared_root` | 実行先のシンボリックリンクが別領域を指していないか確認 |
 | `Configure the job template first` | 雛形の末尾を実処理へ置換し、`CONFIGURE_BEFORE_SUBMIT` マーカーを削除 |
+| `WARNING: ... use CRLF line endings` | 表やスクリプトがWindowsの改行。ジョブが読むならLFで保存し直す（例：pandasは `lineterminator="
+"`、クラスタ側なら `tr -d ''`） |
 | `Job script must use LF line endings` | エディターでジョブファイルの改行をLFにして保存 |
 | `exceeds max_upload_mb` | dry-runで対象を確認し、不要物を除外。大きな入力はサーバーに置く。必要量が分かってから上限を調整 |
 | `qw` | 通常は資源待ち。要求した資源やキュー設定、施設の混雑状況を確認 |

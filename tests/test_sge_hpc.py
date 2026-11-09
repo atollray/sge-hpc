@@ -94,6 +94,20 @@ class HelperTests(unittest.TestCase):
         listed = [s.strip() for s in output.splitlines() if s.startswith('  ')]
         self.assertEqual(listed, ['job.sge', 'keep/file.txt'])
 
+    def test_crlf_text_files_are_warned_but_still_uploaded(self):
+        (self.local / 'table.TSV').write_bytes(b'a\tb\r\n')
+        (self.local / 'unix.tsv').write_bytes(b'a\tb\n')
+        (self.local / 'image.png').write_bytes(b'\x89PNG\r\n')
+        with patch.object(hpc.Remote, 'run') as remote:
+            output = self.run_cli(*self.transfer_args('sync'), '--dry-run')
+        remote.assert_not_called()
+        warning = output.split('WARNING:', 1)[1]
+        self.assertIn('1 text file(s) use CRLF', warning)
+        self.assertIn('table.TSV', warning)
+        self.assertNotIn('unix.tsv', warning)
+        self.assertNotIn('image.png', warning)
+        self.assertIn('Dry run', output)
+
     def test_submit_without_authorization_has_no_side_effects(self):
         with patch.object(hpc.Remote, 'run') as remote, self.assertRaises(ValueError):
             self.run_cli(*self.transfer_args('submit'), '--job', 'job.sge')
