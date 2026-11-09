@@ -223,20 +223,47 @@ def in_error(lines):
     return any(len(s.split()) >= 5 and re.search('[Ee]', s.split()[4]) for s in lines)
 
 
-def qacct_summary(text):
-    # Keep record separators so array tasks and reused job IDs stay distinguishable.
-    kept = [s.rstrip() for s in text.splitlines()
-            if s.startswith('=') or (s.split() and s.split()[0] in QACCT_FIELDS)]
-    return '\n'.join(kept) + '\n' if any(not s.startswith('=') for s in kept) else text
+def qacct_records(text):
+    # Records are separated by '====' lines; array tasks and reused job IDs give several.
+    records, current = [], []
+    for line in text.splitlines():
+        if line.startswith('='):
+            if current:
+                records.append(current)
+            current = []
+        elif line.strip():
+            current.append(line.rstrip())
+    if current:
+        records.append(current)
+    return records
+
+
+def field(record, name):
+    for line in record:
+        parts = line.split(None, 1)
+        if parts and parts[0] == name:
+            return parts[1].strip() if len(parts) > 1 else ''
+    return None
 
 
 def print_accounting(remote, job, full):
     print('Not in queue. Completion/success unconfirmed; match accounting and logs to this run.')
-    text = remote.run(f'qacct -j {job} || true')
-    if not text.strip():
-        print('No accounting record yet; check again later and confirm with this run\'s logs.')
+    out = remote.run(f'id -un; qacct -j {job} || true')
+    user, _, text = out.partition('\n')
+    records = qacct_records(text)
+    # SGE reuses job IDs, so qacct may return other users' old jobs under the same number.
+    mine = [r for r in records if field(r, 'owner') == user.strip()]
+    if len(mine) < len(records):
+        print(f'Ignored {len(records) - len(mine)} accounting record(s) of other users '
+              f'for job ID {job} (job IDs are reused).')
+    if not mine:
+        print(f'No accounting record of {user.strip()} for this job yet. Do not treat it as '
+              'finished successfully; check again later and confirm with this run\'s logs.')
         return
-    print(text if full else qacct_summary(text), end='')
+    print('Check qsub_time and jobname against this run; your own older jobs can share the ID.')
+    for record in mine:
+        print('=' * 62)
+        print('\n'.join(record if full else [s for s in record if s.split()[0] in QACCT_FIELDS]))
 
 
 def watch(remote, job, interval, timeout, full):

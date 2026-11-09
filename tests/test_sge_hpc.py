@@ -120,27 +120,41 @@ class HelperTests(unittest.TestCase):
              'jobnumber    123\ntaskid       1\ncpu          1.000\nexit_status  0\n'
              'maxvmem      1.000G\n'
              '==============================================================\n'
-             'jobname      array\njobnumber    123\ntaskid       2\nexit_status  1\n')
+             'owner        user\njobname      array\njobnumber    123\ntaskid       2\nexit_status  1\n'
+             '==============================================================\n'
+             'owner        someone\njobname      old\njobnumber    123\nexit_status  0\n')
 
-    def fake_finished(self, qacct):
-        return lambda command, **kw: qacct if command.startswith('qacct') else ''
+    def fake_finished(self, qacct, user='user'):
+        return lambda command, **kw: user + '\n' + qacct if 'qacct' in command else ''
 
-    def test_status_shows_accounting_summary_per_record(self):
+    def test_status_shows_own_accounting_summary_per_record(self):
         with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished(self.QACCT)) as remote:
             output = self.run_cli('status', '123')
-        self.assertIn('qacct -j 123 || true', remote.call_args.args[0])
+        self.assertIn('id -un; qacct -j 123 || true', remote.call_args.args[0])
         self.assertIn('Completion/success unconfirmed', output)
         self.assertIn('maxvmem      1.000G', output)
         self.assertEqual(output.count('taskid'), 2)
         self.assertEqual(sum(s.startswith('=') for s in output.splitlines()), 2)
+        self.assertIn('Ignored 1 accounting record(s) of other users', output)
+        self.assertNotIn('someone', output)
         self.assertNotIn('qname', output)
         self.assertNotIn('cpu', output)
 
+    def test_other_users_record_is_never_reported_as_this_job(self):
+        # Real case: the qacct entry for a reused job ID belonged to another user in 2023.
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished(self.QACCT, 'me')):
+            output = self.run_cli('status', '123', '--full')
+        self.assertIn('Ignored 3 accounting record(s)', output)
+        self.assertIn('No accounting record of me', output)
+        self.assertNotIn('exit_status', output)
+
     def test_status_full_and_missing_accounting(self):
         with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished(self.QACCT)):
-            self.assertIn('cpu          1.000', self.run_cli('status', '123', '--full'))
+            output = self.run_cli('status', '123', '--full')
+        self.assertIn('cpu          1.000', output)
+        self.assertNotIn('someone', output)
         with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished('')):
-            self.assertIn('No accounting record yet', self.run_cli('status', '123'))
+            self.assertIn('No accounting record of user', self.run_cli('status', '123'))
 
     def fake_queue(self, states, qstat_j=''):
         states = iter(states)
@@ -151,7 +165,7 @@ class HelperTests(unittest.TestCase):
                 return f'123 0.5 job user {state} date queue 1\n' if state else ''
             if command.startswith('qstat -j'):
                 return qstat_j
-            return self.QACCT
+            return 'user\n' + self.QACCT
         return fake
 
     def test_watch_waits_until_job_leaves_queue(self):
