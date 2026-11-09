@@ -80,6 +80,20 @@ class HelperTests(unittest.TestCase):
         self.assertNotIn('results/file.txt', output)
         self.assertNotIn('.env', output)
 
+    def test_project_ignore_file_adds_excludes_and_is_not_uploaded(self):
+        for folder in ('results3', 'out', 'keep'):
+            (self.local / folder).mkdir()
+            (self.local / folder / 'file.txt').write_text('x')
+        (self.local / 'big.fa').write_text('x')
+        (self.local / '.sgehpcignore').write_text(
+            '# local copies of results\nresults3/\nout   # pilot output\n\n*.fa\n', encoding='utf-8')
+        with patch.object(hpc.Remote, 'run') as remote:
+            output = self.run_cli(*self.transfer_args('sync'), '--dry-run')
+        remote.assert_not_called()
+        self.assertIn('.sgehpcignore: results3, out, *.fa', output)
+        listed = [s.strip() for s in output.splitlines() if s.startswith('  ')]
+        self.assertEqual(listed, ['job.sge', 'keep/file.txt'])
+
     def test_submit_without_authorization_has_no_side_effects(self):
         with patch.object(hpc.Remote, 'run') as remote, self.assertRaises(ValueError):
             self.run_cli(*self.transfer_args('submit'), '--job', 'job.sge')

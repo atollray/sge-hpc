@@ -126,6 +126,18 @@ class Remote:
         )
 
 
+IGNORE_FILE = '.sgehpcignore'
+
+
+def project_excludes(local):
+    """Patterns from <local>/.sgehpcignore: one per line, # starts a comment."""
+    path = local / IGNORE_FILE
+    if not path.is_file():
+        return []
+    lines = (s.split('#', 1)[0].strip() for s in path.read_text(encoding='utf-8-sig').splitlines())
+    return [s.strip('/') for s in lines if s.strip('/')]
+
+
 def upload_files(local, excludes, limit):
     require(local.is_dir(), 'Local directory not found: ' + str(local))
     files = []
@@ -409,8 +421,11 @@ def main(argv=None):
     local = local_path(args.local)
     print(f'{args.action}: {local} <-> {cfg["target"]}:{dest}')
     if args.action in ('sync', 'submit'):
-        files, total = upload_files(local, DEFAULT_EXCLUDES + tuple(cfg['exclude'])
-                                    + tuple(args.exclude), cfg['max_upload_mb'])
+        ignored = project_excludes(local) if local.is_dir() else []
+        if ignored:
+            print(f'{IGNORE_FILE}: ' + ', '.join(ignored))
+        files, total = upload_files(local, DEFAULT_EXCLUDES + (IGNORE_FILE,) + tuple(cfg['exclude'])
+                                    + tuple(ignored) + tuple(args.exclude), cfg['max_upload_mb'])
         print(f'Upload: {len(files)} files, {total / 1024 / 1024:.2f} MiB; no remote deletion')
         for f in files:
             print('  ' + f.relative_to(local).as_posix())
