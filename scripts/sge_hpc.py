@@ -231,17 +231,21 @@ def output_dirs(content):
         if flag not in ('-o', '-e'):
             continue
         path = value.split(':', 1)[1] if ':' in value else value  # [host:]path
-        if '$' in path or path.startswith('/') or not cwd:
+        if path.startswith(('/', '~')) or not cwd:
             notes.append(f'{flag} {value} (create it yourself if needed)')
             continue
-        # A trailing / names a folder; otherwise the last part is the log file name.
+        # A trailing / names a folder; otherwise the last part is the log file name,
+        # which may use SGE variables such as $JOB_ID.
         folder = path.rstrip('/') if path.endswith('/') else str(PurePosixPath(path).parent)
         if folder in ('', '.'):
+            continue
+        if '$' in folder:
+            notes.append(f'{flag} {value} (folder uses a variable; create it yourself)')
             continue
         try:
             folders.append(relative_path(folder))
         except ValueError:
-            notes.append(f'{flag} {value} (outside the run folder)')
+            notes.append(f'{flag} {value} (not a plain folder inside the run folder)')
     return list(dict.fromkeys(folders)), notes
 
 
@@ -280,6 +284,9 @@ def in_error(lines):
     return any(len(s.split()) >= 5 and re.search('[Ee]', s.split()[4]) for s in lines)
 
 
+USER_MARKER = '__SGE_HPC_USER__='
+
+
 def qacct_records(text):
     # Records are separated by '====' lines; array tasks and reused job IDs give several.
     records, current = [], []
@@ -305,21 +312,28 @@ def field(record, name):
 
 def print_accounting(remote, job, full):
     print('Not in queue. Completion/success unconfirmed; match accounting and logs to this run.')
-    out = remote.run(f'id -un; qacct -j {job} || true')
-    user, _, text = out.partition('\n')
+    # A marker keeps the user name apart from anything shell start-up files print.
+    out = remote.run(f'echo "{USER_MARKER}$(id -un)"; qacct -j {job} || true')
+    head, found, text = out.partition(USER_MARKER)
+    require(found, 'Could not read the remote user name; accounting not checked')
+    user, _, text = text.partition('\n')
+    user = user.strip()
     records = qacct_records(text)
     # SGE reuses job IDs, so qacct may return other users' old jobs under the same number.
-    mine = [r for r in records if field(r, 'owner') == user.strip()]
-    if len(mine) < len(records):
-        print(f'Ignored {len(records) - len(mine)} accounting record(s) of other users '
+    others = [r for r in records if field(r, 'owner') not in (None, user)]
+    shown = [r for r in records if field(r, 'owner') in (None, user)]
+    if others:
+        print(f'Ignored {len(others)} accounting record(s) of other users '
               f'for job ID {job} (job IDs are reused).')
-    if not mine:
-        print(f'No accounting record of {user.strip()} for this job yet. Do not treat it as '
+    if not shown:
+        print(f'No accounting record of {user} for this job yet. Do not treat it as '
               'finished successfully; check again later and confirm with this run\'s logs.')
         return
     print('Check qsub_time and jobname against this run; your own older jobs can share the ID.')
-    for record in mine:
+    for record in shown:
         print('=' * 62)
+        if field(record, 'owner') is None:
+            print('(no owner field in this record; confirm it is yours)')
         print('\n'.join(record if full else [s for s in record if s.split()[0] in QACCT_FIELDS]))
 
 
@@ -460,7 +474,7 @@ def main(argv=None):
             require('CONFIGURE_BEFORE_SUBMIT' not in content, 'Configure the job template first')
             print('Job script:\n' + content)
             folders, notes = output_dirs(content)
-            print('Created before qsub: ' + ', '.join(folders))
+            print('Will create before qsub: ' + ', '.join(folders))
             for note in notes:
                 print('Not created: ' + note)
             require(args.dry_run or args.approved, 'Show --dry-run plan and obtain approval; then use --approved')

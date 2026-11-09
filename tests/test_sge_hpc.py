@@ -139,10 +139,12 @@ class HelperTests(unittest.TestCase):
     def test_output_folders_from_job_directives(self):
         content = ('#!/bin/bash\n#$ -cwd\n#$ -o logs5/   # per-run logs\n#$ -e logs5/\n'
                    '#$ -o out/run.log -j y\n#$ -e $HOME/err/\n#$ -o /abs/logs/\n#$ -e ../up/\n'
-                   '#$ -o host:hostlogs/\necho "-o notadirective/"\n')
+                   '#$ -o host:hostlogs/\necho "-o notadirective/"\n'
+                   '#$ -o logs2/$JOB_NAME.o$JOB_ID\n#$ -o ~/mylogs/\n#$ -e logs/$TASK/\n')
         folders, notes = hpc.output_dirs(content)
-        self.assertEqual(folders, ['logs', 'logs5', 'out', 'hostlogs'])
-        self.assertEqual(len(notes), 3)
+        self.assertEqual(folders, ['logs', 'logs5', 'out', 'hostlogs', 'logs2'])
+        self.assertEqual(len(notes), 5)
+        self.assertTrue(any('~/mylogs/' in n for n in notes))
         folders, notes = hpc.output_dirs('#$ -o logs7/\n')
         self.assertEqual((folders, len(notes)), (['logs'], 1))
 
@@ -156,7 +158,7 @@ class HelperTests(unittest.TestCase):
         with patch.object(hpc.Remote, 'run') as remote:
             plan = self.run_cli(*self.transfer_args('submit'), '--job', 'job.sge', '--dry-run')
         remote.assert_not_called()
-        self.assertIn('Created before qsub: logs, logs5', plan)
+        self.assertIn('Will create before qsub: logs, logs5', plan)
         with patch.object(hpc.Remote, 'run', side_effect=fake):
             self.run_cli(*self.transfer_args('submit'), '--job', 'job.sge', '--approved')
         self.assertIn('mkdir -p logs logs5 && qsub -terse job.sge', commands[1])
@@ -178,12 +180,14 @@ class HelperTests(unittest.TestCase):
              'owner        someone\njobname      old\njobnumber    123\nexit_status  0\n')
 
     def fake_finished(self, qacct, user='user'):
-        return lambda command, **kw: user + '\n' + qacct if 'qacct' in command else ''
+        # Shell start-up output before the marker must not be taken as the user name.
+        return lambda command, **kw: ('Welcome\n' + hpc.USER_MARKER + user + '\n' + qacct
+                                      if 'qacct' in command else '')
 
     def test_status_shows_own_accounting_summary_per_record(self):
         with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished(self.QACCT)) as remote:
             output = self.run_cli('status', '123')
-        self.assertIn('id -un; qacct -j 123 || true', remote.call_args.args[0])
+        self.assertIn('$(id -un)"; qacct -j 123 || true', remote.call_args.args[0])
         self.assertIn('Completion/success unconfirmed', output)
         self.assertIn('maxvmem      1.000G', output)
         self.assertEqual(output.count('taskid'), 2)
@@ -209,6 +213,16 @@ class HelperTests(unittest.TestCase):
         with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished('')):
             self.assertIn('No accounting record of user', self.run_cli('status', '123'))
 
+    def test_record_without_owner_is_shown_with_caveat_and_marker_is_required(self):
+        record = '=====\njobname      x\njobnumber    123\nexit_status  0\n'
+        with patch.object(hpc.Remote, 'run', side_effect=self.fake_finished(record)):
+            output = self.run_cli('status', '123')
+        self.assertIn('no owner field in this record', output)
+        self.assertNotIn('Ignored', output)
+        with patch.object(hpc.Remote, 'run', return_value='user\n' + record), \
+                self.assertRaisesRegex(ValueError, 'remote user name'):
+            self.run_cli('status', '123')
+
     def fake_queue(self, states, qstat_j=''):
         states = iter(states)
 
@@ -218,7 +232,7 @@ class HelperTests(unittest.TestCase):
                 return f'123 0.5 job user {state} date queue 1\n' if state else ''
             if command.startswith('qstat -j'):
                 return qstat_j
-            return 'user\n' + self.QACCT
+            return hpc.USER_MARKER + 'user\n' + self.QACCT
         return fake
 
     def test_watch_waits_until_job_leaves_queue(self):
